@@ -33,7 +33,10 @@ curl -s "https://api.telegram.org/bot<ТОКЕН>/getUpdates" | grep -o '"chat":
 ```
 
 4. В репозитории откройте Settings → Secrets and variables → Actions и добавьте
-   `TELEGRAM_TOKEN` и `TELEGRAM_CHAT_ID`.
+   `TELEGRAM_TOKEN` и `TELEGRAM_CHAT_ID`. Чтобы уведомления уходили нескольким
+   адресатам, перечислите их id в `TELEGRAM_CHAT_ID` через запятую — каждый
+   из них должен сам написать боту хотя бы раз, иначе Telegram не примет
+   сообщение.
 5. Запустите workflow вручную (Actions → Мониторинг вакансий → Run workflow).
 
 Первый запуск ничего не присылает списком: он запоминает всё, что уже висит на

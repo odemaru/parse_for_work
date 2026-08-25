@@ -1,5 +1,6 @@
 import html
 import os
+import sys
 
 import requests
 
@@ -10,24 +11,36 @@ MAX_MESSAGE = 3800
 
 
 class TelegramNotifier:
-    def __init__(self, token: str, chat_id: str):
+    def __init__(self, token: str, chat_ids):
         self.token = token
-        self.chat_id = chat_id
+        self.chat_ids = list(chat_ids)
 
     @classmethod
     def from_env(cls):
         token = os.environ.get("TELEGRAM_TOKEN", "").strip()
-        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-        if not token or not chat_id:
+        chat_ids = parse_chat_ids(os.environ.get("TELEGRAM_CHAT_ID", ""))
+        if not token or not chat_ids:
             return None
-        return cls(token, chat_id)
+        return cls(token, chat_ids)
 
     def send(self, text: str):
+        """Недоступность одного получателя не отменяет доставку остальным."""
+        failures = []
+        for chat_id in self.chat_ids:
+            try:
+                self._send_to(chat_id, text)
+            except requests.RequestException as exc:
+                failures.append(f"{chat_id}: {exc}")
+                print(f"[!] Telegram, чат {chat_id}: {exc}", file=sys.stderr)
+        if failures and len(failures) == len(self.chat_ids):
+            raise RuntimeError("не доставлено ни в один чат: " + "; ".join(failures))
+
+    def _send_to(self, chat_id: str, text: str):
         for chunk in _split(text):
             response = requests.post(
                 API.format(token=self.token),
                 json={
-                    "chat_id": self.chat_id,
+                    "chat_id": chat_id,
                     "text": chunk,
                     "parse_mode": "HTML",
                     "disable_web_page_preview": True,
@@ -35,6 +48,11 @@ class TelegramNotifier:
                 timeout=REQUEST_TIMEOUT,
             )
             response.raise_for_status()
+
+
+def parse_chat_ids(raw: str):
+    """TELEGRAM_CHAT_ID хранит один id или несколько через запятую."""
+    return [part.strip() for part in raw.split(",") if part.strip()]
 
 
 def render(vacancies, errors) -> str:
