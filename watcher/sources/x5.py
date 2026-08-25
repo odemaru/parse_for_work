@@ -25,6 +25,7 @@ def fetch(session):
                     title=item["name"],
                     url=f"https://rabota.x5.ru/vacancies/{item['id']}",
                     location=item.get("city") or "",
+                    experience=(item.get("data") or {}).get("experience") or "",
                 )
             next_page = payload.get("next_page")
             if not next_page:

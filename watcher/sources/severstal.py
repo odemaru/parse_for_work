@@ -21,6 +21,7 @@ def fetch(session):
         if not href or not title:
             continue
         place = card.select_one(".card-vacancy__place")
+        experience = card.select_one(".card-vacancy__experience")
         published = card.select_one("time.card-vacancy__date")
         yield Vacancy(
             source=NAME,
@@ -30,4 +31,5 @@ def fetch(session):
             url=f"https://career.severstal.com{href}",
             location=place.get_text(strip=True) if place else "",
             published=published.get("datetime", "") if published else "",
+            experience=experience.get_text(strip=True) if experience else "",
         )

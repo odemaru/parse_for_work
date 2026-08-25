@@ -1,31 +1,52 @@
 import argparse
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
-from .config import DOMAIN_ROOTS, ENABLED_SOURCES, EXCLUDE_ROOTS, ROLE_ROOTS
+from .config import (
+    DOMAIN_ROOTS,
+    ENABLED_SOURCES,
+    EXCLUDE_ROOTS,
+    KEEP_UNKNOWN_EXPERIENCE,
+    MAX_EXPERIENCE_YEARS,
+    ROLE_ROOTS,
+)
+from .experience import ExperienceFilter
 from .http import build_session
 from .matching import TitleFilter
 from .notify import TelegramNotifier, render
 from .sources import REGISTRY
+from .telegraph import publish
 from .state import State
 
 DEFAULT_STATE = Path(__file__).resolve().parent.parent / "data" / "seen.json"
 
 
-def collect(session, title_filter, sources):
+def collect(session, title_filter, experience_filter, sources):
     found, errors = [], []
     for name in sources:
         module = REGISTRY[name]
         try:
-            matched = [v for v in module.fetch(session) if title_filter.matches(v.title)]
+            by_title = [v for v in module.fetch(session) if title_filter.matches(v.title)]
         except Exception as exc:
             errors.append((name, f"{type(exc).__name__}: {exc}"))
             print(f"[!] {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
             continue
-        unique = {v.key: v for v in matched}
-        print(f"[+] {name}: подходящих вакансий {len(unique)}")
-        found.extend(unique.values())
+        # Дубли схлопываются до фильтра по опыту, иначе счётчик отсева
+        # считает копии одной вакансии (у Т-Банка их сотни).
+        unique = {v.key: v for v in by_title}
+        matched = {
+            key: v
+            for key, v in unique.items()
+            if experience_filter.matches(v.title, v.experience)
+        }
+        dropped = len(unique) - len(matched)
+        print(
+            f"[+] {name}: подходящих вакансий {len(matched)}"
+            + (f" (отсеяно по опыту {dropped})" if dropped else "")
+        )
+        found.extend(matched.values())
     return found, errors
 
 
@@ -46,8 +67,9 @@ def main() -> int:
         parser.error(f"неизвестные источники: {', '.join(unknown)}")
 
     title_filter = TitleFilter(ROLE_ROOTS, DOMAIN_ROOTS, EXCLUDE_ROOTS)
+    experience_filter = ExperienceFilter(MAX_EXPERIENCE_YEARS, KEEP_UNKNOWN_EXPERIENCE)
     session = build_session()
-    vacancies, errors = collect(session, title_filter, sources)
+    vacancies, errors = collect(session, title_filter, experience_filter, sources)
     vacancies.sort(key=lambda v: (v.company, v.title))
 
     state = State(args.state)
@@ -55,12 +77,16 @@ def main() -> int:
     fresh = state.split_new(vacancies)
 
     if args.dry_run:
+        report_url = publish(vacancies, f"Вакансии аналитика — {date.today():%d.%m.%Y}")
+        print(f"страница со списком: {report_url}")
         for vacancy in vacancies:
-            print(f"  {vacancy.company:16} {vacancy.title}  {vacancy.url}")
+            mark = vacancy.experience or "опыт не указан"
+            print(f"  {vacancy.company:16} {vacancy.title}  [{mark}]  {vacancy.url}")
         print(f"\nвсего {len(vacancies)}, из них новых {len(fresh)}")
         return 1 if errors and not vacancies else 0
 
     notifier = TelegramNotifier.from_env()
+    report_url = publish(vacancies, f"Вакансии аналитика — {date.today():%d.%m.%Y}")
     if first_run:
         message = (
             f"<b>Мониторинг вакансий запущен</b>\n"
@@ -70,11 +96,11 @@ def main() -> int:
         if errors:
             message += "\n\nИсточники с ошибками: " + ", ".join(n for n, _ in errors)
         if notifier:
-            notifier.send(message)
+            notifier.send(message, report_url)
         print(f"Первый запуск: записано {len(vacancies)} вакансий без уведомления")
     elif fresh or errors:
         if notifier:
-            notifier.send(render(fresh, errors))
+            notifier.send(render(fresh, errors), report_url)
         print(f"Отправлено новых вакансий: {len(fresh)}")
     else:
         print("Новых вакансий нет")

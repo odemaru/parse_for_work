@@ -28,6 +28,7 @@ def fetch(session):
                 url=item.get("externalUrl") or f"https://job.mts.ru/jobs/{item['slug']}",
                 location=cities,
                 published=(item.get("publishedAt") or "")[:10],
+                experience=(item.get("experience") or {}).get("title") or "",
             )
         pagination = (payload.get("meta") or {}).get("pagination") or {}
         offset += PAGE_SIZE

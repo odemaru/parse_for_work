@@ -10,6 +10,7 @@ class Vacancy:
     url: str
     location: str = ""
     published: str = ""
+    experience: str = ""
 
     @property
     def key(self) -> str:

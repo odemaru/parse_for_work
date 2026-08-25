@@ -1,4 +1,5 @@
 import html
+import json
 import os
 import sys
 
@@ -23,29 +24,39 @@ class TelegramNotifier:
             return None
         return cls(token, chat_ids)
 
-    def send(self, text: str):
+    def send(self, text: str, button_url: str | None = None):
         """Недоступность одного получателя не отменяет доставку остальным."""
         failures = []
         for chat_id in self.chat_ids:
             try:
-                self._send_to(chat_id, text)
+                self._send_to(chat_id, text, button_url)
             except requests.RequestException as exc:
                 failures.append(f"{chat_id}: {exc}")
                 print(f"[!] Telegram, чат {chat_id}: {exc}", file=sys.stderr)
         if failures and len(failures) == len(self.chat_ids):
             raise RuntimeError("не доставлено ни в один чат: " + "; ".join(failures))
 
-    def _send_to(self, chat_id: str, text: str):
-        for chunk in _split(text):
+    def _send_to(self, chat_id: str, text: str, button_url: str | None = None):
+        chunks = list(_split(text))
+        for index, chunk in enumerate(chunks):
+            payload = {
+                "chat_id": chat_id,
+                "text": chunk,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            }
+            # Кнопка вешается только на последнее сообщение, иначе она
+            # повторится под каждым куском длинного дайджеста.
+            if button_url and index == len(chunks) - 1:
+                payload["reply_markup"] = json.dumps(
+                    {
+                        "inline_keyboard": [
+                            [{"text": "📋 Показать все вакансии", "url": button_url}]
+                        ]
+                    }
+                )
             response = requests.post(
-                API.format(token=self.token),
-                json={
-                    "chat_id": chat_id,
-                    "text": chunk,
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                },
-                timeout=REQUEST_TIMEOUT,
+                API.format(token=self.token), json=payload, timeout=REQUEST_TIMEOUT
             )
             response.raise_for_status()
 
@@ -65,7 +76,9 @@ def render(vacancies, errors) -> str:
         for vacancy in by_company[company]:
             title = html.escape(vacancy.title)
             lines.append(f'• <a href="{html.escape(vacancy.url)}">{title}</a>')
-            meta = " · ".join(filter(None, (vacancy.location, vacancy.published)))
+            meta = " · ".join(
+                filter(None, (vacancy.location, vacancy.experience, vacancy.published))
+            )
             if meta:
                 lines.append(f"  <i>{html.escape(meta)}</i>")
         lines.append("")

@@ -20,6 +20,7 @@ def fetch(session):
                 title=item["name"],
                 url=f"https://career.rwb.ru/vacancies/{item['id']}",
                 location=item.get("city_title") or "",
+                experience=item.get("experience_type_title") or "",
             )
         offset += PAGE_SIZE
         if offset >= block["range"]["count"]:
