@@ -5,7 +5,7 @@ import sys
 
 import requests
 
-from .config import REQUEST_TIMEOUT
+from .config import DISABLED_SOURCES, REQUEST_TIMEOUT
 
 API = "https://api.telegram.org/bot{token}/sendMessage"
 MAX_MESSAGE = 3800
@@ -87,6 +87,27 @@ def render(vacancies, errors) -> str:
         for source, message in errors:
             lines.append(f"• {html.escape(source)}: {html.escape(message)}")
     return "\n".join(lines).strip()
+
+
+def render_sources(counts, errors) -> str:
+    """Сводка по источникам: откуда собираются вакансии и что там сейчас."""
+    lines = ["<b>Откуда собираются вакансии</b>", ""]
+    failed = dict(errors)
+    for company in sorted(counts):
+        if company in failed:
+            lines.append(f"• {html.escape(company)} — <i>сейчас недоступен</i>")
+        else:
+            lines.append(f"• {html.escape(company)} — {counts[company]}")
+    if DISABLED_SOURCES:
+        lines += ["", "<b>Пока не подключены</b>"]
+        for company, reason in DISABLED_SOURCES.items():
+            lines.append(f"• {html.escape(company)} — {html.escape(reason)}")
+    lines += [
+        "",
+        "<i>Ищутся продуктовые аналитики и аналитики данных "
+        "с опытом до трёх лет включительно.</i>",
+    ]
+    return "\n".join(lines)
 
 
 def _split(text: str):

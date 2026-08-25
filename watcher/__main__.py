@@ -15,8 +15,8 @@ from .config import (
 from .experience import ExperienceFilter
 from .http import build_session
 from .matching import TitleFilter
-from .notify import TelegramNotifier, render
-from .sources import REGISTRY
+from .notify import TelegramNotifier, render, render_sources
+from .sources import REGISTRY, company_of
 from .telegraph import publish
 from .state import State
 
@@ -59,6 +59,11 @@ def main() -> int:
         help="ничего не отправлять и не трогать файл состояния",
     )
     parser.add_argument("--source", action="append", dest="sources")
+    parser.add_argument(
+        "--announce",
+        action="store_true",
+        help="прислать сводку по источникам и выйти, не трогая состояние",
+    )
     args = parser.parse_args()
 
     sources = args.sources or list(ENABLED_SOURCES)
@@ -72,12 +77,34 @@ def main() -> int:
     vacancies, errors = collect(session, title_filter, experience_filter, sources)
     vacancies.sort(key=lambda v: (v.company, v.title))
 
+    counts = {company_of(name): 0 for name in sources}
+    for vacancy in vacancies:
+        counts[vacancy.company] = counts.get(vacancy.company, 0) + 1
+    failed = [(company_of(name), message) for name, message in errors]
+
+    if args.announce:
+        notifier = TelegramNotifier.from_env()
+        report_url = publish(
+            vacancies,
+            f"Вакансии аналитика — {date.today():%d.%m.%Y}",
+            counts,
+        )
+        summary = render_sources(counts, failed)
+        if notifier:
+            notifier.send(summary, report_url)
+            print("Сводка по источникам отправлена")
+        else:
+            print(summary)
+        return 0
+
     state = State(args.state)
     first_run = not state.seeded
     fresh = state.split_new(vacancies)
 
     if args.dry_run:
-        report_url = publish(vacancies, f"Вакансии аналитика — {date.today():%d.%m.%Y}")
+        report_url = publish(
+            vacancies, f"Вакансии аналитика — {date.today():%d.%m.%Y}", counts
+        )
         print(f"страница со списком: {report_url}")
         for vacancy in vacancies:
             mark = vacancy.experience or "опыт не указан"
@@ -86,15 +113,16 @@ def main() -> int:
         return 1 if errors and not vacancies else 0
 
     notifier = TelegramNotifier.from_env()
-    report_url = publish(vacancies, f"Вакансии аналитика — {date.today():%d.%m.%Y}")
+    report_url = publish(
+        vacancies, f"Вакансии аналитика — {date.today():%d.%m.%Y}", counts
+    )
     if first_run:
         message = (
             f"<b>Мониторинг вакансий запущен</b>\n"
             f"В каталогах сейчас {len(vacancies)} подходящих вакансий. "
-            f"Дальше будут приходить только новые."
+            f"Дальше будут приходить только новые.\n\n"
+            + render_sources(counts, failed)
         )
-        if errors:
-            message += "\n\nИсточники с ошибками: " + ", ".join(n for n, _ in errors)
         if notifier:
             notifier.send(message, report_url)
         print(f"Первый запуск: записано {len(vacancies)} вакансий без уведомления")

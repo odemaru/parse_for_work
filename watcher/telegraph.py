@@ -11,14 +11,14 @@ import sys
 
 import requests
 
-from .config import REQUEST_TIMEOUT
+from .config import DISABLED_SOURCES, REQUEST_TIMEOUT
 from .http import USER_AGENT
 
 API = "https://api.telegra.ph"
 MAX_LINE = 200
 
 
-def publish(vacancies, title: str):
+def publish(vacancies, title: str, companies=None):
     """Возвращает адрес страницы или None, если Telegraph недоступен."""
     if not vacancies:
         return None
@@ -32,7 +32,9 @@ def publish(vacancies, title: str):
             {
                 "access_token": account["result"]["access_token"],
                 "title": title[:256],
-                "content": json.dumps(_content(vacancies), ensure_ascii=False),
+                "content": json.dumps(
+                    _content(vacancies, companies), ensure_ascii=False
+                ),
                 "return_content": "false",
             },
         )
@@ -63,7 +65,7 @@ def _call(method: str, params: dict) -> dict:
     return payload
 
 
-def _content(vacancies):
+def _content(vacancies, companies=None):
     nodes = []
     by_company: dict[str, list] = {}
     for vacancy in vacancies:
@@ -85,4 +87,17 @@ def _content(vacancies):
             if meta:
                 line.append(f" — {meta}")
             nodes.append({"tag": "p", "children": line})
+    nodes.extend(_footer(sorted(companies or by_company)))
+    return nodes
+
+
+def _footer(companies):
+    nodes = [
+        {"tag": "hr"},
+        {"tag": "h4", "children": ["Откуда собираются вакансии"]},
+        {"tag": "p", "children": ["Карьерные сайты компаний: " + ", ".join(companies) + "."]},
+    ]
+    if DISABLED_SOURCES:
+        reasons = "; ".join(f"{name} — {why}" for name, why in DISABLED_SOURCES.items())
+        nodes.append({"tag": "p", "children": ["Пока не подключены: " + reasons + "."]})
     return nodes

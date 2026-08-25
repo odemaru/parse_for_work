@@ -9,6 +9,10 @@ on:
         description: "Только показать найденное, ничего не отправлять"
         type: boolean
         default: false
+      announce:
+        description: "Прислать в чат сводку: с каких компаний берутся вакансии"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -38,10 +42,10 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python -m watcher ${{ inputs.dry_run && '--dry-run' || '' }}
+          python -m watcher ${{ inputs.dry_run && '--dry-run' || '' }} ${{ inputs.announce && '--announce' || '' }}
 
       - name: Сохранить состояние
-        if: ${{ !inputs.dry_run }}
+        if: ${{ !inputs.dry_run && !inputs.announce }}
         run: |
           if [[ -z "$(git status --porcelain data/seen.json)" ]]; then
             echo "Состояние не изменилось"
