@@ -2,12 +2,13 @@ import html
 import json
 import os
 import sys
+from pathlib import Path
 
 import requests
 
 from .config import DISABLED_SOURCES, REQUEST_TIMEOUT
 
-API = "https://api.telegram.org/bot{token}/sendMessage"
+API = "https://api.telegram.org/bot{token}/{method}"
 MAX_MESSAGE = 3800
 
 
@@ -36,6 +37,36 @@ class TelegramNotifier:
         if failures and len(failures) == len(self.chat_ids):
             raise RuntimeError("не доставлено ни в один чат: " + "; ".join(failures))
 
+    def send_animation(self, path, caption: str, button_url: str | None = None):
+        """Шлёт гифку с подписью; если файла нет — обычное сообщение."""
+        if not Path(path).is_file():
+            print(f"[!] {path} не найден, вместо гифки уйдёт текст", file=sys.stderr)
+            self.send(caption, button_url)
+            return
+        failures = []
+        for chat_id in self.chat_ids:
+            try:
+                with open(path, "rb") as animation:
+                    data = {
+                        "chat_id": chat_id,
+                        "caption": caption,
+                        "parse_mode": "HTML",
+                    }
+                    if button_url:
+                        data["reply_markup"] = _button(button_url)
+                    response = requests.post(
+                        API.format(token=self.token, method="sendAnimation"),
+                        data=data,
+                        files={"animation": animation},
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                    response.raise_for_status()
+            except requests.RequestException as exc:
+                failures.append(f"{chat_id}: {exc}")
+                print(f"[!] Telegram, чат {chat_id}: {exc}", file=sys.stderr)
+        if failures and len(failures) == len(self.chat_ids):
+            raise RuntimeError("не доставлено ни в один чат: " + "; ".join(failures))
+
     def _send_to(self, chat_id: str, text: str, button_url: str | None = None):
         chunks = list(_split(text))
         for index, chunk in enumerate(chunks):
@@ -48,17 +79,19 @@ class TelegramNotifier:
             # Кнопка вешается только на последнее сообщение, иначе она
             # повторится под каждым куском длинного дайджеста.
             if button_url and index == len(chunks) - 1:
-                payload["reply_markup"] = json.dumps(
-                    {
-                        "inline_keyboard": [
-                            [{"text": "📋 Показать все вакансии", "url": button_url}]
-                        ]
-                    }
-                )
+                payload["reply_markup"] = _button(button_url)
             response = requests.post(
-                API.format(token=self.token), json=payload, timeout=REQUEST_TIMEOUT
+                API.format(token=self.token, method="sendMessage"),
+                json=payload,
+                timeout=REQUEST_TIMEOUT,
             )
             response.raise_for_status()
+
+
+def _button(url: str) -> str:
+    return json.dumps(
+        {"inline_keyboard": [[{"text": "📋 Показать все вакансии", "url": url}]]}
+    )
 
 
 def parse_chat_ids(raw: str):

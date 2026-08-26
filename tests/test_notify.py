@@ -1,7 +1,10 @@
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from watcher.models import Vacancy
-from watcher.notify import parse_chat_ids, render, render_sources
+from watcher.config import NOTHING_FOUND_ANIMATION
+from watcher.notify import TelegramNotifier, parse_chat_ids, render, render_sources
 
 
 class ParseChatIdsTest(unittest.TestCase):
@@ -42,6 +45,20 @@ class RenderSourcesTest(unittest.TestCase):
         message = render_sources({"МТС": 1}, [])
         self.assertIn("Ozon", message)
         self.assertIn("Альфа-Банк", message)
+
+
+class AnimationTest(unittest.TestCase):
+    def test_falls_back_to_text_when_file_missing(self):
+        """Пропавшая гифка не должна оборачиваться молчанием бота."""
+        notifier = TelegramNotifier("token", ["111"])
+        with patch.object(notifier, "send") as send:
+            notifier.send_animation("assets/нет-такого-файла.mp4", "Пусто", None)
+        send.assert_called_once_with("Пусто", None)
+
+    def test_animation_file_is_in_place(self):
+        self.assertTrue(
+            (Path(__file__).resolve().parent.parent / NOTHING_FOUND_ANIMATION).is_file()
+        )
 
 
 if __name__ == "__main__":

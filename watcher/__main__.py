@@ -10,6 +10,7 @@ from .config import (
     EXCLUDE_ROOTS,
     KEEP_UNKNOWN_EXPERIENCE,
     MAX_EXPERIENCE_YEARS,
+    NOTHING_FOUND_ANIMATION,
     ROLE_ROOTS,
 )
 from .experience import ExperienceFilter
@@ -132,6 +133,12 @@ def main() -> int:
         print(f"Отправлено новых вакансий: {len(fresh)}")
     else:
         print("Новых вакансий нет")
+        if notifier:
+            notifier.send_animation(
+                DEFAULT_STATE.parent.parent / NOTHING_FOUND_ANIMATION,
+                "Новых вакансий за сегодня нет.",
+                report_url,
+            )
 
     if not notifier:
         print("[!] TELEGRAM_TOKEN/TELEGRAM_CHAT_ID не заданы — уведомление пропущено",

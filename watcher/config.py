@@ -64,5 +64,9 @@ MAX_EXPERIENCE_YEARS = 3
 # вакансии, отсеивая лишь по грейду в названии.
 KEEP_UNKNOWN_EXPERIENCE = True
 
+# Гифка, которая уходит в чат, когда новых вакансий нет.
+# Путь считается от корня репозитория; если файла нет, шлётся обычный текст.
+NOTHING_FOUND_ANIMATION = "assets/nothing-found.mp4"
+
 REQUEST_TIMEOUT = 30
 STATE_TTL_DAYS = 180
